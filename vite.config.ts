@@ -9,6 +9,7 @@ export default defineConfig({
       userscript: {
         icon: "https://vitejs.dev/logo.svg",
         namespace: "https://github.com/mikelxk/remove_redirect",
+        version: "0.0.5",
         match: ["*://*.zhihu.com/*"],
         author: "mikelxk",
         description: "remove redirects in zhihu.com",
