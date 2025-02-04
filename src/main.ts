@@ -1,50 +1,78 @@
 const updatedLinks = new WeakSet<HTMLAnchorElement>()
 
-function updateLinkHref(link: HTMLAnchorElement): string | null {
-  if (
-    link.href.includes("https://link.zhihu.com/?target=") ||
-    link.href.includes("http://link.zhihu.com/?target=")
-  ) {
-    const urlParams = new URLSearchParams(link.href.split("?")[1])
-    const newLink = urlParams.get("target")
-    if (newLink) {
-      link.href = decodeURIComponent(newLink)
-      return link.href
-    }
+// Cache link patterns
+const ZHIHU_PATTERNS = [
+  "https://link.zhihu.com/?target=",
+  "http://link.zhihu.com/?target=",
+] as const
+
+// Debounce utility
+function debounce<T extends (...args: any[]) => void>(
+  fn: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout>
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => fn(...args), delay)
   }
-  return null
 }
 
-function updateAllLinks() {
-  const links = document.querySelectorAll("a")
-  links.forEach(link => updateLinkHref(link as HTMLAnchorElement))
+function updateLinkHref(link: HTMLAnchorElement): string | null {
+  try {
+    const href = link.href
+    if (!ZHIHU_PATTERNS.some(pattern => href.includes(pattern))) {
+      return null
+    }
+
+    const urlParams = new URLSearchParams(href.split("?")[1])
+    const newLink = urlParams.get("target")
+    if (!newLink) return null
+
+    const decodedLink = decodeURIComponent(newLink)
+    link.href = decodedLink
+    return decodedLink
+  } catch (error) {
+    console.error("Error updating link:", error)
+    return null
+  }
 }
 
-// Initial update of all links on page load
-updateAllLinks()
+// Batch process links
+function updateAllLinks(): void {
+  const links = document.getElementsByTagName("a")
+  Array.from(links).forEach(link => updateLinkHref(link))
+}
 
-// Observe changes in the DOM to update links dynamically
-const observer = new MutationObserver(mutations => {
+// Debounced observer callback
+const debouncedObserverCallback = debounce((mutations: MutationRecord[]) => {
   mutations.forEach(mutation => {
     if (mutation.type === "childList") {
       mutation.addedNodes.forEach(node => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const element = node as HTMLElement
-          if (element.tagName === "A") {
-            updateLinkHref(element as HTMLAnchorElement)
+        if (node instanceof HTMLElement) {
+          if (node instanceof HTMLAnchorElement) {
+            updateLinkHref(node)
           } else {
-            const links = element.querySelectorAll("a")
-            links.forEach(link => updateLinkHref(link as HTMLAnchorElement))
+            const links = node.getElementsByTagName("a")
+            Array.from(links).forEach(link => updateLinkHref(link))
           }
         }
       })
     }
   })
-})
+}, 100)
 
+// Initialize
+document.addEventListener("DOMContentLoaded", updateAllLinks)
+const observer = new MutationObserver(debouncedObserverCallback)
 observer.observe(document.body, {
   childList: true,
   subtree: true,
+})
+
+// Cleanup on page unload
+window.addEventListener("unload", () => {
+  observer.disconnect()
 })
 
 const listenedEvents = ["click", "mouseover"]
